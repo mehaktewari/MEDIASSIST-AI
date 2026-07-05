@@ -9,16 +9,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Allow React frontend to talk to this backend
+# Allow React frontend to talk to backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# All our routes start with /api
 app.include_router(router, prefix="/api")
 
 @app.get("/")

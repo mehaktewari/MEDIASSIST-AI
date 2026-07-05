@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 
-const API = 'http://127.0.0.1:8000/api'
+const API = 'http://localhost:8000/api'
 
 export default function UploadPage() {
   const [file, setFile] = useState(null)
