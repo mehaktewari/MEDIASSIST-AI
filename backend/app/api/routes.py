@@ -1,7 +1,10 @@
 import os
 import uuid
+import json
 import aiofiles
+from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from pydantic import BaseModel
 from app.models.schemas import *
 from app.services.rag_service import index_document, search_documents
 from app.services.llm_service import ask_question, summarize_medical_report, extract_prescription
@@ -15,6 +18,20 @@ ALLOWED_TYPES = {
     "text/plain": ".txt"
 }
 
+HISTORY_FILE = "data/document_history.json"
+
+# ── HISTORY HELPERS ──────────────────────────────────────────
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_history(history):
+    os.makedirs("data", exist_ok=True)
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f)
+
 # ── 1. UPLOAD ────────────────────────────────────────────────
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
@@ -23,7 +40,6 @@ async def upload_document(file: UploadFile = File(...)):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, "Only PDF, DOCX, TXT files allowed!")
 
-    # Save file
     file_id = str(uuid.uuid4())[:8]
     ext = ALLOWED_TYPES[file.content_type]
     filename = f"{file_id}{ext}"
@@ -34,8 +50,18 @@ async def upload_document(file: UploadFile = File(...)):
         content = await file.read()
         await f.write(content)
 
-    # Index into FAISS
     chunks = index_document(file_path, file_id)
+
+    # Save to history
+    history = load_history()
+    history.append({
+        "file_id": file_id,
+        "filename": file.filename,
+        "file_type": ext,
+        "chunks": chunks,
+        "uploaded_at": datetime.now().strftime("%d %b %Y, %I:%M %p")
+    })
+    save_history(history)
 
     return UploadResponse(
         message="Document uploaded and indexed successfully!",
@@ -50,18 +76,18 @@ async def upload_document(file: UploadFile = File(...)):
 async def query_document(request: QueryRequest):
     """Ask a question about uploaded documents"""
 
-    # Find relevant chunks
     chunks = search_documents(request.question, request.file_id)
 
     if not chunks:
-        return QueryResponse(answer="No relevant documents found. Please upload a document first.")
+        return QueryResponse(
+            answer="No relevant documents found. Please upload a document first."
+        )
 
-    # Ask AI
     answer = ask_question(chunks, request.question)
 
     return QueryResponse(
         answer=answer,
-        sources=chunks[:2],  # Return top 2 source chunks
+        sources=chunks[:2],
         confidence=0.85
     )
 
@@ -70,7 +96,6 @@ async def query_document(request: QueryRequest):
 async def summarize_report(request: SummarizeRequest):
     """Summarize a medical report"""
 
-    # Find the uploaded file
     for ext in [".pdf", ".docx", ".txt"]:
         file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
         if os.path.exists(file_path):
@@ -116,7 +141,9 @@ async def translate_text(request: TranslateRequest):
     target = lang_map.get(request.target_language.lower(), "hi")
 
     from deep_translator import GoogleTranslator
-    translated = GoogleTranslator(source="auto", target=target).translate(request.text)
+    translated = GoogleTranslator(
+        source="auto", target=target
+    ).translate(request.text)
 
     return TranslateResponse(
         translated_text=translated,
@@ -127,7 +154,10 @@ async def translate_text(request: TranslateRequest):
 # ── 6. HEALTH CHECK ──────────────────────────────────────────
 @router.get("/health")
 async def health_check():
-    return {"status": "✅ MediAssist AI is running!", "version": "1.0.0"}
+    return {
+        "status": "✅ MediAssist AI is running!",
+        "version": "1.0.0"
+    }
 
 # ── 7. DRUG INTERACTION CHECKER ──────────────────────────────
 class DrugCheckRequest(BaseModel):
@@ -138,12 +168,16 @@ async def drug_interaction(request: DrugCheckRequest):
     """Check dangerous interactions between medicines"""
     from app.services.llm_service import check_drug_interaction
     result = check_drug_interaction(request.medicines)
-    return {"result": result, "medicines_checked": request.medicines}
+    return {
+        "result": result,
+        "medicines_checked": request.medicines
+    }
 
 # ── 8. HEALTH RISK SCORE ─────────────────────────────────────
 @router.post("/health-risk")
 async def health_risk(request: SummarizeRequest):
     """Calculate patient health risk score"""
+
     for ext in [".pdf", ".docx", ".txt"]:
         file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
         if os.path.exists(file_path):
@@ -157,44 +191,31 @@ async def health_risk(request: SummarizeRequest):
     result = calculate_health_risk(text)
     return result
 
-# ── 9. DOCUMENT HISTORY ──────────────────────────────────────
-import json
-
-HISTORY_FILE = "data/document_history.json"
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return []
-
-def save_history(history):
-    os.makedirs("data", exist_ok=True)
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f)
-
+# ── 9. GET ALL DOCUMENTS ─────────────────────────────────────
 @router.get("/documents")
 async def get_documents():
     """Get all uploaded document history"""
     return {"documents": load_history()}
 
+# ── 10. DELETE DOCUMENT ──────────────────────────────────────
 @router.delete("/documents/{file_id}")
 async def delete_document(file_id: str):
-    """Delete a document"""
+    """Delete a document and its index"""
+
     history = load_history()
     history = [d for d in history if d["file_id"] != file_id]
     save_history(history)
 
-    # Delete actual files
+    # Delete uploaded file
     for ext in [".pdf", ".docx", ".txt"]:
         path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{ext}")
         if os.path.exists(path):
             os.remove(path)
 
-    # Delete vector index
+    # Delete FAISS index
     for ext in [".index", ".pkl"]:
         path = f"vector_db/{file_id}{ext}"
         if os.path.exists(path):
             os.remove(path)
 
-    return {"message": f"Document {file_id} deleted!"}
+    return {"message": f"Document {file_id} deleted successfully!"}
