@@ -14,12 +14,44 @@ export default function QueryPage() {
   const [question, setQuestion] = useState('')
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
   const [loading, setLoading] = useState(false)
+  const [listening, setListening] = useState(false)
   const bottomRef = useRef(null)
+  const recognitionRef = useRef(null)
 
-  // Auto scroll to bottom when new message arrives
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 🎤 Voice Input Setup
+  const startListening = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Voice input not supported in this browser! Use Chrome.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'en-US'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onstart = () => setListening(true)
+    recognition.onend = () => setListening(false)
+    recognition.onerror = () => setListening(false)
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript
+      setQuestion(transcript)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+    setListening(false)
+  }
 
   const handleQuery = async () => {
     if (!question.trim()) return
@@ -49,7 +81,7 @@ export default function QueryPage() {
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: '❌ Sorry, I could not get an answer. Please check your API key or try again.',
+        text: '❌ Sorry, could not get an answer. Please try again.',
         time: new Date().toLocaleTimeString(),
         error: true
       }])
@@ -68,26 +100,49 @@ export default function QueryPage() {
   const clearChat = () => {
     setMessages([{
       role: 'assistant',
-      text: '👋 Chat cleared! Ask me anything about your medical documents.',
+      text: '👋 Chat cleared! Ask me anything.',
       time: new Date().toLocaleTimeString()
     }])
   }
 
+  // 📄 Export chat as PDF
+  const exportPDF = () => {
+    const content = messages
+      .map(m => `[${m.role.toUpperCase()}] ${m.text}`)
+      .join('\n\n')
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `MediAssist-Chat-${new Date().toLocaleDateString()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[80vh]">
+    <div className="max-w-3xl mx-auto flex flex-col h-[82vh]">
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-2xl font-bold text-gray-800">🤖 Ask AI</h2>
-        <button
-          onClick={clearChat}
-          className="text-sm text-red-500 hover:text-red-700 border border-red-200 px-3 py-1 rounded-lg"
-        >
-          🗑️ Clear Chat
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={exportPDF}
+            className="text-sm text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50"
+          >
+            📄 Export
+          </button>
+          <button
+            onClick={clearChat}
+            className="text-sm text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50"
+          >
+            🗑️ Clear
+          </button>
+        </div>
       </div>
 
-      {/* File ID bar */}
+      {/* File ID */}
       <div className="mb-3 flex gap-2 items-center">
         <span className="text-sm text-gray-500 whitespace-nowrap">File ID:</span>
         <input
@@ -97,7 +152,7 @@ export default function QueryPage() {
             setFileId(e.target.value)
             localStorage.setItem('last_file_id', e.target.value)
           }}
-          placeholder="Paste file ID here (or leave empty for all docs)"
+          placeholder="Paste file ID here"
           className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
       </div>
@@ -106,16 +161,12 @@ export default function QueryPage() {
       <div className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border p-4 space-y-4">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] ${msg.role === 'user' ? 'order-2' : 'order-1'}`}>
-
-              {/* Avatar */}
+            <div className={`max-w-[80%]`}>
               <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0
                   ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border-2 border-gray-200'}`}>
                   {msg.role === 'user' ? '👤' : '🤖'}
                 </div>
-
-                {/* Bubble */}
                 <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed
                   ${msg.role === 'user'
                     ? 'bg-blue-600 text-white rounded-br-none'
@@ -126,8 +177,6 @@ export default function QueryPage() {
                   {msg.text}
                 </div>
               </div>
-
-              {/* Time */}
               <p className={`text-xs text-gray-400 mt-1 ${msg.role === 'user' ? 'text-right mr-10' : 'ml-10'}`}>
                 {msg.time}
               </p>
@@ -135,7 +184,6 @@ export default function QueryPage() {
           </div>
         ))}
 
-        {/* Loading bubble */}
         {loading && (
           <div className="flex justify-start">
             <div className="flex items-end gap-2">
@@ -155,14 +203,28 @@ export default function QueryPage() {
 
       {/* Input Box */}
       <div className="mt-3 flex gap-2">
+        {/* 🎤 Voice Button */}
+        <button
+          onClick={listening ? stopListening : startListening}
+          className={`px-4 rounded-xl font-semibold transition-all flex-shrink-0
+            ${listening
+              ? 'bg-red-500 text-white animate-pulse'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          title={listening ? 'Stop recording' : 'Start voice input'}
+        >
+          {listening ? '⏹️' : '🎤'}
+        </button>
+
         <textarea
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask anything about your document... (Enter to send)"
+          placeholder={listening ? '🎤 Listening... speak now!' : 'Ask anything... (Enter to send, 🎤 for voice)'}
           rows={2}
           className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
         />
+
         <button
           onClick={handleQuery}
           disabled={loading || !question.trim()}
@@ -171,7 +233,9 @@ export default function QueryPage() {
           {loading ? '⏳' : '➤'}
         </button>
       </div>
-      <p className="text-xs text-gray-400 mt-1 text-center">Press Enter to send • Shift+Enter for new line</p>
+      <p className="text-xs text-gray-400 mt-1 text-center">
+        🎤 Voice input • Enter to send • 📄 Export chat
+      </p>
     </div>
   )
 }
