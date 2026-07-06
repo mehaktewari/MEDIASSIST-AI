@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import { useDropzone } from 'react-dropzone'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
@@ -11,20 +10,24 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [progress, setProgress] = useState(0)
+  const [dragging, setDragging] = useState(false)
 
-  const onDrop = useCallback(files => {
-    if (files[0]) {
-      setFile(files[0])
-      setResult(null)
-      toast.success(`${files[0].name} ready to upload`)
-    }
-  }, [])
+  const handleFile = (f) => {
+    if (!f) return
+    const allowed = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+    if (!allowed.includes(f.type)) return toast.error('Only PDF, DOCX, TXT allowed!')
+    setFile(f)
+    setResult(null)
+    toast.success(`${f.name} ready!`)
+  }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'text/plain': ['.txt'] },
-    maxFiles: 1
-  })
+  const onDragOver = (e) => { e.preventDefault(); setDragging(true) }
+  const onDragLeave = () => setDragging(false)
+  const onDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+    handleFile(e.dataTransfer.files[0])
+  }
 
   const handleUpload = async () => {
     if (!file) return toast.error('Select a file first')
@@ -47,6 +50,13 @@ export default function UploadPage() {
     }
   }
 
+  const fileIcon = (f) => {
+    if (!f) return '☁️'
+    if (f.name.endsWith('.pdf')) return '📕'
+    if (f.name.endsWith('.docx')) return '📘'
+    return '📄'
+  }
+
   return (
     <div className="max-w-xl mx-auto animate-fadeUp">
 
@@ -56,28 +66,40 @@ export default function UploadPage() {
       </div>
 
       {/* Drop Zone */}
-      <div {...getRootProps()} className={`relative border-2 border-dashed rounded-3xl p-14 text-center cursor-pointer transition-all duration-300 group
-        ${isDragActive
-          ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-105'
-          : file
-            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
-            : 'border-gray-200 dark:border-white/10 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/5 bg-white dark:bg-white/5'
-        }`}>
-        <input {...getInputProps()} />
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => document.getElementById('fileInput').click()}
+        className={`relative border-2 border-dashed rounded-3xl p-14 text-center cursor-pointer transition-all duration-300
+          ${dragging
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 scale-105'
+            : file
+              ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-500/10'
+              : 'border-gray-200 dark:border-white/10 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/5 bg-white dark:bg-white/5'
+          }`}
+      >
+        <input
+          id="fileInput"
+          type="file"
+          accept=".pdf,.docx,.txt"
+          className="hidden"
+          onChange={e => handleFile(e.target.files[0])}
+        />
 
         {file ? (
           <div className="animate-fadeIn">
-            <div className="text-5xl mb-3 animate-float">{file.name.endsWith('.pdf') ? '📕' : file.name.endsWith('.docx') ? '📘' : '📄'}</div>
+            <div className="text-6xl mb-3">{fileIcon(file)}</div>
             <p className="font-bold text-emerald-600 dark:text-emerald-400 text-lg">{file.name}</p>
             <p className="text-sm text-gray-400 mt-1">{(file.size / 1024).toFixed(1)} KB • Click to change</p>
           </div>
         ) : (
           <div>
-            <div className={`text-5xl mb-4 transition-transform duration-300 ${isDragActive ? 'scale-125' : 'group-hover:scale-110'}`}>
-              {isDragActive ? '📥' : '☁️'}
+            <div className={`text-6xl mb-4 transition-transform duration-300 ${dragging ? 'scale-125' : 'hover:scale-110'}`}>
+              {dragging ? '📥' : '☁️'}
             </div>
             <p className="font-bold text-gray-700 dark:text-slate-300 text-lg">
-              {isDragActive ? 'Drop it here!' : 'Drag & drop your file'}
+              {dragging ? 'Drop it here!' : 'Drag & drop your file'}
             </p>
             <p className="text-sm text-gray-400 mt-1">or click to browse</p>
             <div className="flex gap-2 justify-center mt-4">
@@ -93,17 +115,24 @@ export default function UploadPage() {
       {loading && (
         <div className="mt-4 animate-fadeIn">
           <div className="flex justify-between text-sm text-gray-500 dark:text-slate-400 mb-2">
-            <span>Processing...</span><span className="font-semibold">{progress}%</span>
+            <span>Processing...</span>
+            <span className="font-semibold">{progress}%</span>
           </div>
           <div className="h-2 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full transition-all duration-300" style={{ width: `${progress || 30}%` }}></div>
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-violet-500 rounded-full transition-all duration-300"
+              style={{ width: `${progress || 30}%` }}
+            ></div>
           </div>
         </div>
       )}
 
       {/* Button */}
-      <button onClick={handleUpload} disabled={loading || !file}
-        className="mt-4 w-full py-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 transform text-lg">
+      <button
+        onClick={handleUpload}
+        disabled={loading || !file}
+        className="mt-4 w-full py-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 transform text-lg"
+      >
         {loading ? 'Processing...' : 'Upload & Analyze →'}
       </button>
 
@@ -125,8 +154,12 @@ export default function UploadPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Link to="/query" className="py-3 bg-blue-500 text-white text-center rounded-xl font-semibold text-sm hover:bg-blue-600 transition-all">Ask AI →</Link>
-            <Link to="/summarize" className="py-3 bg-violet-500 text-white text-center rounded-xl font-semibold text-sm hover:bg-violet-600 transition-all">Summarize →</Link>
+            <Link to="/query" className="py-3 bg-blue-500 text-white text-center rounded-xl font-semibold text-sm hover:bg-blue-600 transition-all">
+              Ask AI →
+            </Link>
+            <Link to="/summarize" className="py-3 bg-violet-500 text-white text-center rounded-xl font-semibold text-sm hover:bg-violet-600 transition-all">
+              Summarize →
+            </Link>
           </div>
         </div>
       )}
