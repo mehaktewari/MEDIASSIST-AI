@@ -128,3 +128,73 @@ async def translate_text(request: TranslateRequest):
 @router.get("/health")
 async def health_check():
     return {"status": "✅ MediAssist AI is running!", "version": "1.0.0"}
+
+# ── 7. DRUG INTERACTION CHECKER ──────────────────────────────
+class DrugCheckRequest(BaseModel):
+    medicines: list[str]
+
+@router.post("/drug-interaction")
+async def drug_interaction(request: DrugCheckRequest):
+    """Check dangerous interactions between medicines"""
+    from app.services.llm_service import check_drug_interaction
+    result = check_drug_interaction(request.medicines)
+    return {"result": result, "medicines_checked": request.medicines}
+
+# ── 8. HEALTH RISK SCORE ─────────────────────────────────────
+@router.post("/health-risk")
+async def health_risk(request: SummarizeRequest):
+    """Calculate patient health risk score"""
+    for ext in [".pdf", ".docx", ".txt"]:
+        file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
+        if os.path.exists(file_path):
+            break
+    else:
+        raise HTTPException(404, f"File {request.file_id} not found")
+
+    from app.utils.document_parser import parse_document
+    from app.services.llm_service import calculate_health_risk
+    text = parse_document(file_path)
+    result = calculate_health_risk(text)
+    return result
+
+# ── 9. DOCUMENT HISTORY ──────────────────────────────────────
+import json
+
+HISTORY_FILE = "data/document_history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_history(history):
+    os.makedirs("data", exist_ok=True)
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f)
+
+@router.get("/documents")
+async def get_documents():
+    """Get all uploaded document history"""
+    return {"documents": load_history()}
+
+@router.delete("/documents/{file_id}")
+async def delete_document(file_id: str):
+    """Delete a document"""
+    history = load_history()
+    history = [d for d in history if d["file_id"] != file_id]
+    save_history(history)
+
+    # Delete actual files
+    for ext in [".pdf", ".docx", ".txt"]:
+        path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{ext}")
+        if os.path.exists(path):
+            os.remove(path)
+
+    # Delete vector index
+    for ext in [".index", ".pkl"]:
+        path = f"vector_db/{file_id}{ext}"
+        if os.path.exists(path):
+            os.remove(path)
+
+    return {"message": f"Document {file_id} deleted!"}

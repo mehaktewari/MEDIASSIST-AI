@@ -2,27 +2,12 @@ import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
   const features = [
-    {
-      icon: '📄',
-      title: 'Upload Documents',
-      desc: 'Upload PDF, DOCX, TXT medical files',
-      path: '/upload',
-      color: 'bg-blue-50 border-blue-200'
-    },
-    {
-      icon: '🤖',
-      title: 'Ask AI Questions',
-      desc: 'Ask anything about your documents',
-      path: '/query',
-      color: 'bg-green-50 border-green-200'
-    },
-    {
-      icon: '📋',
-      title: 'Summarize Reports',
-      desc: 'Get key info from medical reports',
-      path: '/summarize',
-      color: 'bg-purple-50 border-purple-200'
-    },
+    { icon: '📄', title: 'Upload Documents', desc: 'PDF, DOCX, TXT medical files', path: '/upload', color: 'bg-blue-50 border-blue-200' },
+    { icon: '🤖', title: 'Ask AI', desc: 'Chat with your documents', path: '/query', color: 'bg-green-50 border-green-200' },
+    { icon: '📋', title: 'Summarize', desc: 'Get key info from reports', path: '/summarize', color: 'bg-purple-50 border-purple-200' },
+    { icon: '💊', title: 'Drug Checker', desc: 'Check medicine interactions', path: '/drug-checker', color: 'bg-red-50 border-red-200' },
+    { icon: '📊', title: 'Health Risk Score', desc: 'AI risk analysis 0-100', path: '/health-risk', color: 'bg-orange-50 border-orange-200' },
+    { icon: '🗂️', title: 'Document History', desc: 'Manage uploaded files', path: '/history', color: 'bg-gray-50 border-gray-200' },
   ]
 
   return (

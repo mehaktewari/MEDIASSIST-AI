@@ -4,10 +4,13 @@ export default function Layout({ children }) {
   const location = useLocation()
 
   const navItems = [
-    { path: '/', label: '🏠 Dashboard' },
+    { path: '/', label: '🏠 Home' },
     { path: '/upload', label: '📄 Upload' },
     { path: '/query', label: '🤖 Ask AI' },
     { path: '/summarize', label: '📋 Summarize' },
+    { path: '/drug-checker', label: '💊 Drug Check' },
+    { path: '/health-risk', label: '📊 Risk Score' },
+    { path: '/history', label: '🗂️ History' },
   ]
 
   return (
