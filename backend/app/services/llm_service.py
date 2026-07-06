@@ -1,30 +1,10 @@
-import os
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../../../.env"))
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
 def get_llm():
     """
-    Smart fallback system:
-    1. Try Gemini API (if key exists)
-    2. Fall back to local Ollama (no key needed, free forever!)
+    Always use Ollama local model - FREE, no API key needed!
     """
-    if GEMINI_API_KEY and len(GEMINI_API_KEY) > 10:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            return ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
-                google_api_key=GEMINI_API_KEY,
-                temperature=0.3,
-            )
-        except Exception:
-            pass  # Fall through to local model
-
-    # Local Ollama model - FREE, no API key needed!
     from langchain_community.llms import Ollama
-    return Ollama(model="gemma2:2b", temperature=0.3)
+    print("✅ Using Ollama local model (gemma2:2b)")
+    return Ollama(model="gemma2:2b", base_url="http://localhost:11434")
 
 
 def ask_question(context_chunks: list[str], question: str) -> str:
@@ -116,7 +96,7 @@ def check_drug_interaction(medicines: list[str]) -> str:
     prompt = f"""You are a clinical pharmacist.
 Check for dangerous interactions between these medicines: {', '.join(medicines)}
 
-For each pair, mention:
+For each pair mention:
 1. Interaction level (None/Mild/Moderate/Severe)
 2. What happens if taken together
 3. Recommendation
@@ -133,7 +113,7 @@ def calculate_health_risk(report_text: str) -> dict:
     prompt = f"""You are a medical risk analyst.
 Based on this medical report, calculate a health risk score.
 
-Return ONLY a JSON object:
+Return ONLY a JSON object (no extra text):
 {{
   "risk_score": 75,
   "risk_level": "High",
@@ -143,7 +123,7 @@ Return ONLY a JSON object:
   "lifestyle_tips": ["Exercise daily", "Reduce sugar intake"]
 }}
 
-Risk score: 0-30 = Low, 31-60 = Medium, 61-80 = High, 81-100 = Critical
+Risk score guide: 0-30 Low, 31-60 Medium, 61-80 High, 81-100 Critical
 
 Medical Report:
 {report_text[:3000]}"""
