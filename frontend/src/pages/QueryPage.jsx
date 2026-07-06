@@ -1,199 +1,118 @@
 import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const API = 'http://localhost:8000/api'
 
 export default function QueryPage() {
   const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      text: '👋 Hello! I am MediAssist AI. Upload a document and ask me anything about it!',
-      time: new Date().toLocaleTimeString()
-    }
+    { role: 'ai', text: 'Hello! Upload a medical document and ask me anything about it. I\'m here to help.', time: now() }
   ])
-  const [question, setQuestion] = useState('')
+  const [input, setInput] = useState('')
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
   const bottomRef = useRef(null)
-  const recognitionRef = useRef(null)
+  const recRef = useRef(null)
+
+  function now() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, loading])
 
-  // 🎤 Voice Input Setup
-  const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      alert('Voice input not supported in this browser! Use Chrome.')
-      return
-    }
-
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'en-US'
-    recognition.continuous = false
-    recognition.interimResults = false
-
-    recognition.onstart = () => setListening(true)
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript
-      setQuestion(transcript)
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
+  const startVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return toast.error('Use Chrome for voice input')
+    const r = new SR()
+    r.lang = 'en-US'
+    r.onstart = () => setListening(true)
+    r.onend = () => setListening(false)
+    r.onresult = e => setInput(e.results[0][0].transcript)
+    recRef.current = r
+    r.start()
   }
 
-  const stopListening = () => {
-    recognitionRef.current?.stop()
-    setListening(false)
-  }
-
-  const handleQuery = async () => {
-    if (!question.trim()) return
-
-    const userMsg = {
-      role: 'user',
-      text: question,
-      time: new Date().toLocaleTimeString()
-    }
-
-    setMessages(prev => [...prev, userMsg])
-    setQuestion('')
+  const send = async () => {
+    if (!input.trim()) return
+    const q = input
+    setMessages(p => [...p, { role: 'user', text: q, time: now() }])
+    setInput('')
     setLoading(true)
-
     try {
-      const res = await axios.post(`${API}/query`, {
-        question,
-        file_id: fileId || null,
-        language: 'english'
-      })
-
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: res.data.answer,
-        time: new Date().toLocaleTimeString()
-      }])
+      const res = await axios.post(`${API}/query`, { question: q, file_id: fileId || null })
+      setMessages(p => [...p, { role: 'ai', text: res.data.answer, time: now() }])
     } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: '❌ Sorry, could not get an answer. Please try again.',
-        time: new Date().toLocaleTimeString(),
-        error: true
-      }])
+      setMessages(p => [...p, { role: 'ai', text: 'Something went wrong. Please try again.', time: now(), err: true }])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleQuery()
-    }
-  }
-
-  const clearChat = () => {
-    setMessages([{
-      role: 'assistant',
-      text: '👋 Chat cleared! Ask me anything.',
-      time: new Date().toLocaleTimeString()
-    }])
-  }
-
-  // 📄 Export chat as PDF
-  const exportPDF = () => {
-    const content = messages
-      .map(m => `[${m.role.toUpperCase()}] ${m.text}`)
-      .join('\n\n')
-
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
+  const exportChat = () => {
+    const txt = messages.map(m => `[${m.role.toUpperCase()}] ${m.text}`).join('\n\n')
     const a = document.createElement('a')
-    a.href = url
-    a.download = `MediAssist-Chat-${new Date().toLocaleDateString()}.txt`
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }))
+    a.download = `chat-${Date.now()}.txt`
     a.click()
-    URL.revokeObjectURL(url)
+    toast.success('Chat exported!')
   }
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[82vh]">
+    <div className="max-w-2xl mx-auto flex flex-col animate-fadeUp" style={{ height: 'calc(100vh - 140px)' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-2xl font-bold text-gray-800">🤖 Ask AI</h2>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white">Ask AI</h1>
+          <p className="text-sm text-gray-400">Powered by Ollama — runs locally</p>
+        </div>
         <div className="flex gap-2">
-          <button
-            onClick={exportPDF}
-            className="text-sm text-green-600 border border-green-200 px-3 py-1 rounded-lg hover:bg-green-50"
-          >
-            📄 Export
-          </button>
-          <button
-            onClick={clearChat}
-            className="text-sm text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50"
-          >
-            🗑️ Clear
-          </button>
+          <button onClick={exportChat} className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Export</button>
+          <button onClick={() => setMessages([{ role: 'ai', text: 'Chat cleared!', time: now() }])}
+            className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Clear</button>
         </div>
       </div>
 
       {/* File ID */}
-      <div className="mb-3 flex gap-2 items-center">
-        <span className="text-sm text-gray-500 whitespace-nowrap">File ID:</span>
-        <input
-          type="text"
-          value={fileId}
-          onChange={e => {
-            setFileId(e.target.value)
-            localStorage.setItem('last_file_id', e.target.value)
-          }}
-          placeholder="Paste file ID here"
-          className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-        />
+      <div className="mb-3">
+        <input type="text" value={fileId}
+          onChange={e => { setFileId(e.target.value); localStorage.setItem('last_file_id', e.target.value) }}
+          placeholder="File ID (leave empty to search all documents)"
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-gray-400" />
       </div>
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto bg-gray-50 rounded-xl border p-4 space-y-4">
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%]`}>
-              <div className={`flex items-end gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0
-                  ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border-2 border-gray-200'}`}>
-                  {msg.role === 'user' ? '👤' : '🤖'}
-                </div>
-                <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed
-                  ${msg.role === 'user'
-                    ? 'bg-blue-600 text-white rounded-br-none'
-                    : msg.error
-                      ? 'bg-red-50 text-red-700 border border-red-200 rounded-bl-none'
-                      : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none shadow-sm'
-                  }`}>
-                  {msg.text}
-                </div>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto space-y-4 py-2">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''} animate-fadeIn`}>
+            <div className={`w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center text-sm font-bold
+              ${m.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gradient-to-br from-violet-500 to-blue-500 text-white'}`}>
+              {m.role === 'user' ? 'U' : 'AI'}
+            </div>
+            <div className={`max-w-[78%]`}>
+              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed
+                ${m.role === 'user'
+                  ? 'bg-blue-500 text-white rounded-tr-none'
+                  : m.err
+                    ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-tl-none'
+                    : 'bg-white dark:bg-white/8 text-gray-800 dark:text-slate-200 border border-gray-100 dark:border-white/10 rounded-tl-none shadow-sm'
+                }`}>
+                {m.text}
               </div>
-              <p className={`text-xs text-gray-400 mt-1 ${msg.role === 'user' ? 'text-right mr-10' : 'ml-10'}`}>
-                {msg.time}
-              </p>
+              <p className={`text-xs text-gray-400 mt-1 ${m.role === 'user' ? 'text-right' : ''}`}>{m.time}</p>
             </div>
           </div>
         ))}
 
         {loading && (
-          <div className="flex justify-start">
-            <div className="flex items-end gap-2">
-              <div className="w-8 h-8 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center">🤖</div>
-              <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
-                <div className="flex gap-1 items-center h-4">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'0ms'}}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'150ms'}}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'300ms'}}></div>
-                </div>
+          <div className="flex gap-3 animate-fadeIn">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold">AI</div>
+            <div className="bg-white dark:bg-white/8 border border-gray-100 dark:border-white/10 rounded-2xl rounded-tl-none px-4 py-3">
+              <div className="flex gap-1 items-center">
+                {[0, 150, 300].map(d => (
+                  <div key={d} className="w-2 h-2 bg-gray-300 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }}></div>
+                ))}
               </div>
             </div>
           </div>
@@ -201,41 +120,25 @@ export default function QueryPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input Box */}
-      <div className="mt-3 flex gap-2">
-        {/* 🎤 Voice Button */}
-        <button
-          onClick={listening ? stopListening : startListening}
-          className={`px-4 rounded-xl font-semibold transition-all flex-shrink-0
-            ${listening
-              ? 'bg-red-500 text-white animate-pulse'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          title={listening ? 'Stop recording' : 'Start voice input'}
-        >
-          {listening ? '⏹️' : '🎤'}
+      {/* Input */}
+      <div className="mt-3 flex gap-2 items-end">
+        <button onClick={listening ? () => recRef.current?.stop() : startVoice}
+          className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-lg transition-all
+            ${listening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-white/20'}`}>
+          🎤
         </button>
-
-        <textarea
-          value={question}
-          onChange={e => setQuestion(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={listening ? '🎤 Listening... speak now!' : 'Ask anything... (Enter to send, 🎤 for voice)'}
-          rows={2}
-          className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-        />
-
-        <button
-          onClick={handleQuery}
-          disabled={loading || !question.trim()}
-          className="bg-blue-600 text-white px-5 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition-all"
-        >
-          {loading ? '⏳' : '➤'}
+        <div className="flex-1 relative">
+          <textarea value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder={listening ? 'Listening...' : 'Ask anything about your document...'}
+            rows={1}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none placeholder-gray-400" />
+        </div>
+        <button onClick={send} disabled={loading || !input.trim()}
+          className="flex-shrink-0 w-11 h-11 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl flex items-center justify-center text-lg transition-all hover:scale-105 transform disabled:cursor-not-allowed">
+          ➤
         </button>
       </div>
-      <p className="text-xs text-gray-400 mt-1 text-center">
-        🎤 Voice input • Enter to send • 📄 Export chat
-      </p>
     </div>
   )
 }

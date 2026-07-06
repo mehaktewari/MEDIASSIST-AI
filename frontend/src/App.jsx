@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import UploadPage from './pages/UploadPage'
@@ -9,9 +10,22 @@ import HealthRiskPage from './pages/HealthRiskPage'
 import HistoryPage from './pages/HistoryPage'
 
 function App() {
+  const [darkMode, setDarkMode] = useState(
+    localStorage.getItem('darkMode') === 'true'
+  )
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    localStorage.setItem('darkMode', darkMode)
+  }, [darkMode])
+
   return (
     <Router>
-      <Layout>
+      <Layout darkMode={darkMode} setDarkMode={setDarkMode}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/upload" element={<UploadPage />} />
