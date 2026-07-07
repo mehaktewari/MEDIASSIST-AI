@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api/axios'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import useLanguages from '../hooks/useLanguages'
-
-const API = 'http://localhost:8000/api'
 
 export default function DoctorNotePage() {
   const LANGUAGES = useLanguages()
@@ -20,7 +18,7 @@ export default function DoctorNotePage() {
     const toastId = toast.loading('Writing doctor\'s note...')
 
     try {
-      const res = await axios.post(`${API}/generate-doctor-note`, {
+      const res = await api.post('/generate-doctor-note', {
         file_id: fileId,
         patient_name: patientName.trim() || null,
         language,
