@@ -106,10 +106,17 @@ def ask_question(context_chunks: list[str], question: str, history: list = None,
     context = "\n\n".join(context_chunks)
     history_text = _format_history(history or [])
 
+    # Built as a plain variable (not a nested f-string) because Python 3.11
+    # and earlier don't allow a backslash inside an f-string's {...} part —
+    # this bit it during the Render deploy.
+    history_block = ""
+    if history_text:
+        history_block = f"Here is the conversation so far, for context on follow-up questions:\n{history_text}\n"
+
     prompt = f"""You are a helpful medical document assistant.
 Use ONLY the context below to answer the question.
 If the answer is not in the context, say "I couldn't find that in the document."
-{f"Here is the conversation so far, for context on follow-up questions:\\n{history_text}\\n" if history_text else ""}
+{history_block}
 Context:
 {context}
 
@@ -119,7 +126,6 @@ Answer:"""
 
     answer = _invoke(llm, prompt)
     return _translate_if_needed(answer, language)
-
 
 def summarize_medical_report(text: str, language: str = "english") -> dict:
     llm = get_llm()
