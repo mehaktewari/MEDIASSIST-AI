@@ -9,3 +9,4 @@ data/uploads/*
 vector_db/*.index
 vector_db/*.pkl
 .DS_Store
+backend/data/users.db
