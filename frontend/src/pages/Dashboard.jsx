@@ -1,8 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import axios from 'axios'
-
-const API = 'http://localhost:8000/api'
+import api from '../api/axios'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ docs: 0, online: false })
@@ -12,8 +10,8 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         const [, d] = await Promise.all([
-          axios.get(`${API}/health`),
-          axios.get(`${API}/documents`)
+          api.get('/health'),
+          api.get('/documents')
         ])
         setStats({ docs: d.data.documents.length, online: true })
       } catch {
@@ -31,6 +29,7 @@ export default function Dashboard() {
     { icon: '📋', title: 'Summarize', desc: 'Instant report summaries', path: '/summarize', gradient: 'from-emerald-500 to-emerald-600' },
     { icon: '💊', title: 'Drug Checker', desc: 'Interaction analysis', path: '/drug-checker', gradient: 'from-rose-500 to-rose-600' },
     { icon: '📊', title: 'Risk Score', desc: 'Health risk assessment', path: '/health-risk', gradient: 'from-amber-500 to-orange-500' },
+    { icon: '📝', title: 'Doctor Note', desc: 'Professional clinical notes', path: '/doctor-note', gradient: 'from-teal-500 to-teal-600' },
     { icon: '🗂️', title: 'History', desc: 'All your documents', path: '/history', gradient: 'from-slate-500 to-slate-600' },
   ]
 
