@@ -19,6 +19,7 @@ export default function Layout({ children, darkMode, setDarkMode }) {
     { path: '/summarize', label: 'Summarize' },
     { path: '/drug-checker', label: 'Drug Check' },
     { path: '/health-risk', label: 'Risk Score' },
+    { path: '/doctor-note', label: 'Doctor Note' },
     { path: '/history', label: 'History' },
   ]
 
