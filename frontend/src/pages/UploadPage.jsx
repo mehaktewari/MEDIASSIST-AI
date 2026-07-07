@@ -1,9 +1,7 @@
 import { useState, useCallback } from 'react'
-import axios from 'axios'
+import api from '../api/axios'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
-
-const API = 'http://localhost:8000/api'
 
 export default function UploadPage() {
   const [file, setFile] = useState(null)
@@ -36,7 +34,7 @@ export default function UploadPage() {
     formData.append('file', file)
     const tid = toast.loading('Uploading & indexing...')
     try {
-      const res = await axios.post(`${API}/upload`, formData, {
+      const res = await api.post('/upload', formData, {
         onUploadProgress: e => setProgress(Math.round(e.loaded * 100 / e.total))
       })
       setResult(res.data)
