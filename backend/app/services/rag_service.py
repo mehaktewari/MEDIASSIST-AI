@@ -50,10 +50,14 @@ def index_document(file_path: str, file_id: str) -> int:
 
     return len(chunks)
 
-def search_documents(question: str, file_id: str = None, top_k: int = 4) -> list[str]:
+def search_documents(question: str, file_id: str = None, top_k: int = 4, allowed_ids: list[str] = None) -> list[str]:
     """
     Find the most relevant chunks for a question.
     👶 Like searching your index cards for the answer!
+
+    `allowed_ids`, if given, restricts the search to only those file_ids —
+    used so one user can never accidentally search another user's documents
+    when file_id is left blank ("search all my documents").
     """
     # Embed the question
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -65,6 +69,8 @@ def search_documents(question: str, file_id: str = None, top_k: int = 4) -> list
     # Find which indexes to search
     if file_id:
         index_files = [f"{VECTOR_DB_PATH}/{file_id}.index"]
+    elif allowed_ids is not None:
+        index_files = [f"{VECTOR_DB_PATH}/{fid}.index" for fid in allowed_ids]
     else:
         index_files = list(Path(VECTOR_DB_PATH).glob("*.index"))
 
@@ -73,7 +79,7 @@ def search_documents(question: str, file_id: str = None, top_k: int = 4) -> list
         idx_path = str(index_path)
         pkl_path = idx_path.replace(".index", ".pkl")
 
-        if not os.path.exists(pkl_path):
+        if not os.path.exists(pkl_path) or not os.path.exists(idx_path):
             continue
 
         index = faiss.read_index(idx_path)
