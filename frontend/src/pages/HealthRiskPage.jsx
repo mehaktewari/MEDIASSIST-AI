@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
-
-const API = 'http://localhost:8000/api'
+import api from '../api/axios'
 
 export default function HealthRiskPage() {
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
@@ -15,7 +13,7 @@ export default function HealthRiskPage() {
     setError('')
 
     try {
-      const res = await axios.post(`${API}/health-risk`, { file_id: fileId })
+      const res = await api.post('/health-risk', { file_id: fileId })
       setResult(res.data)
     } catch {
       setError('Failed! Make sure file ID is correct.')
