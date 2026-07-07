@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const API_BASE = 'http://localhost:8000/api'
+// In production (Vercel/Netlify/etc), set VITE_API_BASE_URL as an environment
+// variable pointing at your deployed backend, e.g. https://mediassist-api.onrender.com/api
+// Locally, it falls back to your local backend so `npm run dev` keeps working
+// with zero config.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 const api = axios.create({ baseURL: API_BASE })
 
