@@ -1,8 +1,11 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Layout({ children, darkMode, setDarkMode }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
@@ -22,6 +25,12 @@ export default function Layout({ children, darkMode, setDarkMode }) {
     { path: '/doctor-note', label: 'Doctor Note' },
     { path: '/history', label: 'History' },
   ]
+
+  const handleLogout = () => {
+    logout()
+    setMenuOpen(false)
+    navigate('/login')
+  }
 
   return (
     <div className={`min-h-screen transition-all duration-500 ${darkMode ? 'dark bg-[#0a0f1e]' : 'bg-slate-50'}`}>
@@ -47,21 +56,23 @@ export default function Layout({ children, darkMode, setDarkMode }) {
               </span>
             </Link>
 
-            {/* Desktop Nav */}
-            <div className="hidden lg:flex items-center gap-1">
-              {navItems.map(item => (
-                <Link key={item.path} to={item.path}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
-                    ${location.pathname === item.path
-                      ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
-                      : darkMode
-                        ? 'text-slate-400 hover:text-white hover:bg-white/10'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                    }`}>
-                  {item.label}
-                </Link>
-              ))}
-            </div>
+            {/* Desktop Nav — only shown when logged in */}
+            {user && (
+              <div className="hidden lg:flex items-center gap-1">
+                {navItems.map(item => (
+                  <Link key={item.path} to={item.path}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
+                      ${location.pathname === item.path
+                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                        : darkMode
+                          ? 'text-slate-400 hover:text-white hover:bg-white/10'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      }`}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             <div className="flex items-center gap-3">
               <button onClick={() => setDarkMode(!darkMode)}
@@ -69,6 +80,25 @@ export default function Layout({ children, darkMode, setDarkMode }) {
                   ${darkMode ? 'bg-white/10 hover:bg-white/20 text-yellow-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
+
+              {user ? (
+                <>
+                  <span className={`hidden md:block text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-gray-600'}`}>
+                    {user.full_name}
+                  </span>
+                  <button onClick={handleLogout}
+                    className={`hidden md:block px-3 py-2 rounded-xl text-sm font-medium transition-all
+                      ${darkMode ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <Link to="/login"
+                  className="hidden md:block px-4 py-2 rounded-xl text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-all">
+                  Log in
+                </Link>
+              )}
+
               <button onClick={() => setMenuOpen(!menuOpen)}
                 className={`lg:hidden w-10 h-10 rounded-xl flex items-center justify-center transition-all
                   ${darkMode ? 'bg-white/10 text-white' : 'bg-gray-100 text-gray-600'}`}>
@@ -81,7 +111,7 @@ export default function Layout({ children, darkMode, setDarkMode }) {
           {menuOpen && (
             <div className={`lg:hidden mt-4 p-4 rounded-2xl border animate-fadeIn
               ${darkMode ? 'bg-slate-800/90 border-white/10' : 'bg-white border-gray-200'}`}>
-              {navItems.map(item => (
+              {user && navItems.map(item => (
                 <Link key={item.path} to={item.path}
                   onClick={() => setMenuOpen(false)}
                   className={`block px-4 py-3 rounded-xl text-sm font-medium mb-1 transition-all
@@ -92,6 +122,21 @@ export default function Layout({ children, darkMode, setDarkMode }) {
                   {item.label}
                 </Link>
               ))}
+
+              <div className={`mt-2 pt-2 border-t ${darkMode ? 'border-white/10' : 'border-gray-100'}`}>
+                {user ? (
+                  <button onClick={handleLogout}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium
+                      ${darkMode ? 'text-slate-300 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    Log out ({user.full_name})
+                  </button>
+                ) : (
+                  <Link to="/login" onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-3 rounded-xl text-sm font-semibold bg-blue-500 text-white">
+                    Log in
+                  </Link>
+                )}
+              </div>
             </div>
           )}
         </div>
