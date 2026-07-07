@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
+import api from '../api/axios'
 import toast from 'react-hot-toast'
-
-const API = 'http://localhost:8000/api'
 
 export default function HistoryPage() {
   const [documents, setDocuments] = useState([])
@@ -11,7 +9,7 @@ export default function HistoryPage() {
 
   const fetchDocs = async () => {
     try {
-      const res = await axios.get(`${API}/documents`)
+      const res = await api.get('/documents')
       setDocuments(res.data.documents.reverse())
     } catch {
       setDocuments([])
@@ -25,7 +23,7 @@ export default function HistoryPage() {
 
   const handleDelete = async (fileId) => {
     try {
-      await axios.delete(`${API}/documents/${fileId}`)
+      await api.delete(`/documents/${fileId}`)
       setConfirmId(null)
       toast.success('Document deleted')
       fetchDocs()
