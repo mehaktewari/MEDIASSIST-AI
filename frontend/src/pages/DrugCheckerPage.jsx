@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
-
-const API = 'http://localhost:8000/api'
+import api from '../api/axios'
 
 export default function DrugCheckerPage() {
   const [medicines, setMedicines] = useState(['', ''])
@@ -33,7 +31,7 @@ export default function DrugCheckerPage() {
     setResult(null)
 
     try {
-      const res = await axios.post(`${API}/drug-interaction`, { medicines: filled })
+      const res = await api.post('/drug-interaction', { medicines: filled })
       setResult(res.data)
     } catch {
       setError('Check failed! Make sure backend is running.')
