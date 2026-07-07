@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.database import init_db
 from app.api.routes import router
+from app.api.auth_routes import router as auth_router
 
 app = FastAPI(
     title="MediAssist AI",
@@ -26,6 +28,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("startup")
+async def on_startup():
+    init_db()  # creates data/users.db + users table if they don't exist yet
+
+
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(router, prefix="/api")
 
 @app.get("/")
