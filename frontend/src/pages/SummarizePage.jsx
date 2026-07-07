@@ -2,11 +2,14 @@ import { useState } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
+import useLanguages from '../hooks/useLanguages'
 
 const API = 'http://localhost:8000/api'
 
 export default function SummarizePage() {
+  const LANGUAGES = useLanguages()
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
+  const [language, setLanguage] = useState(localStorage.getItem('preferred_language') || 'english')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
 
@@ -17,7 +20,7 @@ export default function SummarizePage() {
     const toastId = toast.loading('Analyzing medical report...')
 
     try {
-      const res = await axios.post(`${API}/summarize`, { file_id: fileId })
+      const res = await axios.post(`${API}/summarize`, { file_id: fileId, language })
       setResult(res.data)
       toast.success('Report analyzed!', { id: toastId })
     } catch (err) {
@@ -166,15 +169,25 @@ This is an AI-generated summary. Always consult a doctor.
         )}
       </div>
 
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">File ID</label>
-        <input
-          type="text"
-          value={fileId}
-          onChange={e => { setFileId(e.target.value); localStorage.setItem('last_file_id', e.target.value) }}
-          placeholder="e.g. a1b2c3d4"
-          className="w-full border border-gray-300 dark:border-white/10 bg-white dark:bg-white/5 text-gray-800 dark:text-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-gray-400"
-        />
+      <div className="mb-4 flex gap-2">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">File ID</label>
+          <input
+            type="text"
+            value={fileId}
+            onChange={e => { setFileId(e.target.value); localStorage.setItem('last_file_id', e.target.value) }}
+            placeholder="e.g. a1b2c3d4"
+            className="w-full border border-gray-300 dark:border-white/10 bg-white dark:bg-white/5 text-gray-800 dark:text-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 placeholder-gray-400"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Language</label>
+          <select value={language}
+            onChange={e => { setLanguage(e.target.value); localStorage.setItem('preferred_language', e.target.value) }}
+            className="border border-gray-300 dark:border-white/10 bg-white dark:bg-white/5 text-gray-800 dark:text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400">
+            {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
+        </div>
       </div>
 
       <button
