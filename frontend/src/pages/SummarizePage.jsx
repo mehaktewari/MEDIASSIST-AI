@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api/axios'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import useLanguages from '../hooks/useLanguages'
-
-const API = 'http://localhost:8000/api'
 
 export default function SummarizePage() {
   const LANGUAGES = useLanguages()
@@ -20,7 +18,7 @@ export default function SummarizePage() {
     const toastId = toast.loading('Analyzing medical report...')
 
     try {
-      const res = await axios.post(`${API}/summarize`, { file_id: fileId, language })
+      const res = await api.post('/summarize', { file_id: fileId, language })
       setResult(res.data)
       toast.success('Report analyzed!', { id: toastId })
     } catch (err) {
