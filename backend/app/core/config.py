@@ -9,6 +9,14 @@ class Settings(BaseSettings):
 
     # AI - Gemini (FREE!)
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+
+    # AI - Ollama (local fallback, no key needed)
+    OLLAMA_MODEL: str = "gemma2:2b"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
+    # Which provider to prefer: "auto" (Gemini if key present, else Ollama), "gemini", or "ollama"
+    LLM_PROVIDER: str = "auto"
 
     # Database
     DATABASE_URL: str = "sqlite:///./mediassist.db"  # SQLite for local dev (no setup needed!)

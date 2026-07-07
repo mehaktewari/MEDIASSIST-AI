@@ -1,10 +1,43 @@
 def get_llm():
     """
-    Always use Ollama local model - FREE, no API key needed!
+    Picks the LLM backend based on app.core.config.settings:
+      - LLM_PROVIDER="gemini"  -> always use Gemini (needs GEMINI_API_KEY)
+      - LLM_PROVIDER="ollama"  -> always use local Ollama
+      - LLM_PROVIDER="auto"    -> use Gemini if a key is set, else fall back to Ollama
+
+    This makes the .env / config.py settings actually control what runs,
+    instead of silently always using Ollama regardless of GEMINI_API_KEY.
     """
+    from app.core.config import settings
+
+    provider = settings.LLM_PROVIDER.lower()
+    use_gemini = provider == "gemini" or (provider == "auto" and bool(settings.GEMINI_API_KEY))
+
+    if use_gemini:
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError(
+                "LLM_PROVIDER is set to 'gemini' but GEMINI_API_KEY is empty in .env"
+            )
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            print(f"✅ Using Gemini ({settings.GEMINI_MODEL})")
+            return ChatGoogleGenerativeAI(
+                model=settings.GEMINI_MODEL,
+                google_api_key=settings.GEMINI_API_KEY,
+                temperature=0.3,
+            )
+        except Exception as e:
+            print(f"⚠️ Gemini init failed ({e}), falling back to Ollama")
+
     from langchain_community.llms import Ollama
-    print("✅ Using Ollama local model (gemma2:2b)")
-    return Ollama(model="gemma2:2b", base_url="http://localhost:11434")
+    print(f"✅ Using Ollama local model ({settings.OLLAMA_MODEL})")
+    return Ollama(model=settings.OLLAMA_MODEL, base_url=settings.OLLAMA_BASE_URL)
+
+
+def _invoke(llm, prompt: str) -> str:
+    """Normalizes the return value across Ollama (str) and Gemini/Chat models (AIMessage)."""
+    response = llm.invoke(prompt)
+    return response if isinstance(response, str) else response.content
 
 
 def ask_question(context_chunks: list[str], question: str) -> str:
@@ -22,8 +55,7 @@ Question: {question}
 
 Answer:"""
 
-    response = llm.invoke(prompt)
-    return response if isinstance(response, str) else response.content
+    return _invoke(llm, prompt)
 
 
 def summarize_medical_report(text: str) -> dict:
@@ -44,8 +76,7 @@ Return ONLY a JSON object like this (no extra text):
 Medical Report:
 {text[:3000]}"""
 
-    response = llm.invoke(prompt)
-    content = response if isinstance(response, str) else response.content
+    content = _invoke(llm, prompt)
 
     import json, re
     try:
@@ -79,8 +110,7 @@ Return ONLY a JSON object (no extra text):
 Prescription:
 {text[:2000]}"""
 
-    response = llm.invoke(prompt)
-    content = response if isinstance(response, str) else response.content
+    content = _invoke(llm, prompt)
 
     import json, re
     try:
@@ -103,8 +133,7 @@ For each pair mention:
 
 Be concise and clear."""
 
-    response = llm.invoke(prompt)
-    return response if isinstance(response, str) else response.content
+    return _invoke(llm, prompt)
 
 
 def calculate_health_risk(report_text: str) -> dict:
@@ -128,8 +157,7 @@ Risk score guide: 0-30 Low, 31-60 Medium, 61-80 High, 81-100 Critical
 Medical Report:
 {report_text[:3000]}"""
 
-    response = llm.invoke(prompt)
-    content = response if isinstance(response, str) else response.content
+    content = _invoke(llm, prompt)
 
     import json, re
     try:

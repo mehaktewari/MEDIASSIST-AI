@@ -1,0 +1,32 @@
+PATIENT MEDICAL REPORT
+======================
+Patient Name: Rahul Sharma
+Age: 45
+Date: 2024-01-15
+
+DIAGNOSIS:
+Type 2 Diabetes Mellitus with early signs of hypertension.
+
+BLOOD TEST RESULTS:
+- Blood Glucose (Fasting): 185 mg/dL (Normal: 70-100) - ABNORMAL HIGH
+- HbA1c: 8.2% (Normal: below 5.7%) - ABNORMAL HIGH
+- Blood Pressure: 145/92 mmHg (Normal: 120/80) - ABNORMAL HIGH
+- Total Cholesterol: 220 mg/dL (Normal: below 200) - ABNORMAL HIGH
+- HDL Cholesterol: 38 mg/dL (Normal: above 40) - LOW
+- Creatinine: 1.1 mg/dL (Normal: 0.7-1.2) - NORMAL
+
+PRESCRIBED MEDICINES:
+1. Metformin 500mg - twice daily with meals
+2. Amlodipine 5mg - once daily in morning
+3. Atorvastatin 10mg - once daily at night
+4. Aspirin 75mg - once daily
+
+DOCTOR RECOMMENDATIONS:
+- Reduce sugar and salt intake immediately
+- Exercise 30 minutes daily
+- Follow up blood test in 3 months
+- Monitor blood pressure daily at home
+- Consult cardiologist if BP stays high
+
+Doctor: Dr. Priya Mehta
+Hospital: Apollo Healthcare, Mumbai

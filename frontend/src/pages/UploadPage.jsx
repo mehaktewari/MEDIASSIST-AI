@@ -91,7 +91,7 @@ export default function UploadPage() {
           <div className="animate-fadeIn">
             <div className="text-6xl mb-3">{fileIcon(file)}</div>
             <p className="font-bold text-emerald-600 dark:text-emerald-400 text-lg">{file.name}</p>
-            <p className="text-sm text-gray-400 mt-1">{(file.size / 1024).toFixed(1)} KB • Click to change</p>
+            <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">{(file.size / 1024).toFixed(1)} KB • Click to change</p>
           </div>
         ) : (
           <div>
@@ -101,7 +101,7 @@ export default function UploadPage() {
             <p className="font-bold text-gray-700 dark:text-slate-300 text-lg">
               {dragging ? 'Drop it here!' : 'Drag & drop your file'}
             </p>
-            <p className="text-sm text-gray-400 mt-1">or click to browse</p>
+            <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">or click to browse</p>
             <div className="flex gap-2 justify-center mt-4">
               {['PDF', 'DOCX', 'TXT'].map(t => (
                 <span key={t} className="px-3 py-1 bg-gray-100 dark:bg-white/10 rounded-full text-xs font-semibold text-gray-500 dark:text-slate-400">{t}</span>
@@ -145,11 +145,11 @@ export default function UploadPage() {
           </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-white dark:bg-white/10 rounded-2xl p-4">
-              <p className="text-xs text-gray-400 mb-1">File ID</p>
+              <p className="text-xs text-gray-400 dark:text-slate-500 mb-1">File ID</p>
               <p className="font-black text-blue-600 dark:text-blue-400 text-xl font-mono">{result.file_id}</p>
             </div>
             <div className="bg-white dark:bg-white/10 rounded-2xl p-4">
-              <p className="text-xs text-gray-400 mb-1">Chunks</p>
+              <p className="text-xs text-gray-400 dark:text-slate-500 mb-1">Chunks</p>
               <p className="font-black text-gray-800 dark:text-white text-xl">{result.chunks_created}</p>
             </div>
           </div>

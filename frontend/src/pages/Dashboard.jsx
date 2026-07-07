@@ -46,9 +46,11 @@ export default function Dashboard() {
           <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">AI Running — 100% Free & Private</span>
         </div>
 
-        <h1 className="text-6xl md:text-7xl font-black tracking-tight mb-6 text-gray-900 dark:text-white leading-tight">
-          Your Medical Docs,<br />
-          <span className="gradient-text">Understood Instantly</span>
+        <h1 className="text-6xl md:text-7xl font-black tracking-tight mb-6 leading-tight">
+          <span className="text-gray-900 dark:text-white">Your Medical Docs,</span><br />
+          <span style={{background: 'linear-gradient(135deg, #2563eb, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>
+            Understood Instantly
+          </span>
         </h1>
 
         <p className="text-xl text-gray-500 dark:text-slate-400 max-w-xl mx-auto mb-10 leading-relaxed">

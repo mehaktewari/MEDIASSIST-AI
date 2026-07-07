@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4 defaults `dark:` to prefers-color-scheme. Our toggle button
+   sets a `.dark` class on <html> instead, so we opt back into class-based
+   dark mode. Without this line, every `dark:` utility in the app is a no-op
+   when the user clicks the sun/moon button. */
+@custom-variant dark (&:is(.dark *));
+
 * { box-sizing: border-box; }
 
 body {
@@ -50,12 +56,7 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6, #06b6d4);
-  background-size: 200% 200%;
-  animation: gradientMove 4s ease infinite;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #2563eb;
 }
 
 .glass {

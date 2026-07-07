@@ -7,4 +7,5 @@ frontend/dist/
 data/uploads/*
 !data/uploads/.gitkeep
 vector_db/*.index
+vector_db/*.pkl
 .DS_Store

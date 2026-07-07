@@ -1,25 +1,66 @@
 import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import jsPDF from 'jspdf'
 
 const API = 'http://localhost:8000/api'
 
+function now() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function storageKey(fileId) {
+  return `chat_history_${fileId || 'all'}`
+}
+
+function welcomeMessage() {
+  return { role: 'ai', text: "Hello! Upload a medical document and ask me anything about it. I'm here to help.", time: now() }
+}
+
+function loadHistory(fileId) {
+  try {
+    const raw = localStorage.getItem(storageKey(fileId))
+    if (!raw) return [welcomeMessage()]
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.length ? parsed : [welcomeMessage()]
+  } catch {
+    return [welcomeMessage()]
+  }
+}
+
 export default function QueryPage() {
-  const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Hello! Upload a medical document and ask me anything about it. I\'m here to help.', time: now() }
-  ])
-  const [input, setInput] = useState('')
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
+  const [messages, setMessages] = useState(() => loadHistory(fileId))
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const bottomRef = useRef(null)
   const recRef = useRef(null)
+  const exportMenuRef = useRef(null)
 
-  function now() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+  // Reload the right conversation whenever the active file changes
+  useEffect(() => {
+    setMessages(loadHistory(fileId))
+  }, [fileId])
+
+  // Persist every change so refreshing the page doesn't lose the conversation
+  useEffect(() => {
+    localStorage.setItem(storageKey(fileId), JSON.stringify(messages))
+  }, [messages, fileId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  // Close the export dropdown when clicking outside it
+  useEffect(() => {
+    const onClick = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setExportOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
 
   const startVoice = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -29,6 +70,7 @@ export default function QueryPage() {
     r.onstart = () => setListening(true)
     r.onend = () => setListening(false)
     r.onresult = e => setInput(e.results[0][0].transcript)
+    r.onerror = () => { setListening(false); toast.error('Voice input failed, try again') }
     recRef.current = r
     r.start()
   }
@@ -49,13 +91,65 @@ export default function QueryPage() {
     }
   }
 
-  const exportChat = () => {
-    const txt = messages.map(m => `[${m.role.toUpperCase()}] ${m.text}`).join('\n\n')
+  const clearChat = () => {
+    const fresh = [welcomeMessage()]
+    setMessages(fresh)
+    localStorage.setItem(storageKey(fileId), JSON.stringify(fresh))
+    toast.success('Chat cleared')
+  }
+
+  const exportTxt = () => {
+    const txt = messages.map(m => `[${m.role.toUpperCase()} • ${m.time}] ${m.text}`).join('\n\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }))
-    a.download = `chat-${Date.now()}.txt`
+    a.download = `mediassist-chat-${Date.now()}.txt`
     a.click()
-    toast.success('Chat exported!')
+    toast.success('Exported as .txt')
+    setExportOpen(false)
+  }
+
+  const exportPdf = () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+    const marginX = 40
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const maxWidth = pageWidth - marginX * 2
+    let y = 50
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(16)
+    doc.text('MediAssist AI — Chat Transcript', marginX, y)
+    y += 18
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(120)
+    doc.text(`Exported ${new Date().toLocaleString()}${fileId ? ` • File ID: ${fileId}` : ''}`, marginX, y)
+    y += 24
+    doc.setTextColor(20)
+
+    messages.forEach(m => {
+      const label = m.role === 'user' ? 'You' : 'MediAssist AI'
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      if (y > pageHeight - 60) { doc.addPage(); y = 50 }
+      doc.text(`${label}  •  ${m.time}`, marginX, y)
+      y += 14
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      const lines = doc.splitTextToSize(m.text, maxWidth)
+      lines.forEach(line => {
+        if (y > pageHeight - 40) { doc.addPage(); y = 50 }
+        doc.text(line, marginX, y)
+        y += 14
+      })
+      y += 10
+    })
+
+    doc.save(`mediassist-chat-${Date.now()}.pdf`)
+    toast.success('Exported as PDF')
+    setExportOpen(false)
   }
 
   return (
@@ -65,12 +159,30 @@ export default function QueryPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 dark:text-white">Ask AI</h1>
-          <p className="text-sm text-gray-400">Powered by Ollama — runs locally</p>
+          <p className="text-sm text-gray-400">Your conversation is saved automatically on this device</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={exportChat} className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Export</button>
-          <button onClick={() => setMessages([{ role: 'ai', text: 'Chat cleared!', time: now() }])}
-            className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all">Clear</button>
+          <div className="relative" ref={exportMenuRef}>
+            <button onClick={() => setExportOpen(v => !v)}
+              className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all flex items-center gap-1">
+              Export
+              <span className="text-xs">▾</span>
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 mt-2 w-40 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-800 shadow-lg overflow-hidden z-10 animate-fadeIn">
+                <button onClick={exportPdf} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors">
+                  📄 Export as PDF
+                </button>
+                <button onClick={exportTxt} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors border-t border-gray-100 dark:border-white/10">
+                  📝 Export as .txt
+                </button>
+              </div>
+            )}
+          </div>
+          <button onClick={clearChat}
+            className="px-3 py-2 text-sm font-medium rounded-xl bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-all">
+            Clear
+          </button>
         </div>
       </div>
 
