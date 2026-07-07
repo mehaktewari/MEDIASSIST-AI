@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
-
-const API = 'http://localhost:8000/api'
+import api from '../api/axios'
 
 const FALLBACK_LANGUAGES = [
   { value: 'english', label: 'English' },
@@ -20,7 +18,7 @@ export default function useLanguages() {
 
   useEffect(() => {
     let cancelled = false
-    axios.get(`${API}/languages`)
+    api.get('/languages')
       .then(res => {
         if (!cancelled && Array.isArray(res.data.languages) && res.data.languages.length) {
           setLanguages(res.data.languages)
