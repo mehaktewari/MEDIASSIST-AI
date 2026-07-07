@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Which provider to prefer: "auto" (Gemini if key present, else Ollama), "gemini", or "ollama"
     LLM_PROVIDER: str = "auto"
 
+    # Auth
+    JWT_SECRET: str = "change-this-to-a-long-random-string-in-production"
+    JWT_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+
     # Database
     DATABASE_URL: str = "sqlite:///./mediassist.db"  # SQLite for local dev (no setup needed!)
 
