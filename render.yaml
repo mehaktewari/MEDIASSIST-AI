@@ -37,3 +37,8 @@ services:
         value: data/uploads
       - key: MAX_FILE_SIZE_MB
         value: "50"
+      # Pin Python version — without this, Render may pick the newest Python
+      # (e.g. 3.14), which doesn't have pre-built wheels for pydantic-core yet
+      # and fails trying to compile it from source instead.
+      - key: PYTHON_VERSION
+        value: 3.11.9
