@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import axios from 'axios'
+import api from '../api/axios'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import useLanguages from '../hooks/useLanguages'
-
-const API = 'http://localhost:8000/api'
-
-const LANGUAGES = useLanguages()
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -32,6 +28,7 @@ function loadHistory(fileId) {
 }
 
 export default function QueryPage() {
+  const LANGUAGES = useLanguages()
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
   const [messages, setMessages] = useState(() => loadHistory(fileId))
   const [input, setInput] = useState('')
@@ -93,7 +90,7 @@ export default function QueryPage() {
         .slice(-9, -1) // last 4 exchanges, excluding the question we're asking right now
         .map(m => ({ role: m.role, text: m.text }))
 
-      const res = await axios.post(`${API}/query`, {
+      const res = await api.post('/query', {
         question: q,
         file_id: fileId || null,
         language,
