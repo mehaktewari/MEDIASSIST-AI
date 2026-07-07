@@ -3,12 +3,13 @@ import uuid
 import json
 import aiofiles
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pydantic import BaseModel
 from app.models.schemas import *
 from app.services.rag_service import index_document, search_documents
 from app.services.llm_service import ask_question, summarize_medical_report, extract_prescription, generate_doctor_note
 from app.core.config import settings
+from app.api.deps import get_current_user
 
 router = APIRouter()
 
@@ -32,18 +33,33 @@ def save_history(history):
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f)
 
-def resolve_file_path(file_id: str) -> str:
-    """Finds the uploaded file on disk for a given file_id, or raises 404."""
+def get_history_entry(file_id: str):
+    return next((d for d in load_history() if d["file_id"] == file_id), None)
+
+def resolve_file_path(file_id: str, current_user: dict) -> str:
+    """
+    Finds the uploaded file on disk for a given file_id, but ONLY if it
+    belongs to the requesting user. Raises 404 if it doesn't exist, or
+    403 if it exists but belongs to someone else (never leak "exists but
+    isn't yours" vs "doesn't exist" — 403 for owned-by-someone-else is fine
+    here since file_ids are random UUIDs, not guessable/enumerable).
+    """
+    entry = get_history_entry(file_id)
+    if not entry:
+        raise HTTPException(404, f"File {file_id} not found")
+    if entry.get("owner_id") != current_user["id"]:
+        raise HTTPException(403, "You don't have access to this document")
+
     for ext in [".pdf", ".docx", ".txt"]:
         file_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{ext}")
         if os.path.exists(file_path):
             return file_path
-    raise HTTPException(404, f"File {file_id} not found")
+    raise HTTPException(404, f"File {file_id} not found on disk")
 
 # ── 1. UPLOAD ────────────────────────────────────────────────
 @router.post("/upload", response_model=UploadResponse)
-async def upload_document(file: UploadFile = File(...)):
-    """Upload a medical document (PDF, DOCX, TXT)"""
+async def upload_document(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    """Upload a medical document (PDF, DOCX, TXT). Requires login."""
 
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(400, "Only PDF, DOCX, TXT files allowed!")
@@ -70,14 +86,15 @@ async def upload_document(file: UploadFile = File(...)):
 
     chunks = index_document(file_path, file_id)
 
-    # Save to history
+    # Save to history, tagged with the owner so other users can never see/use it
     history = load_history()
     history.append({
         "file_id": file_id,
         "filename": file.filename,
         "file_type": ext,
         "chunks": chunks,
-        "uploaded_at": datetime.now().strftime("%d %b %Y, %I:%M %p")
+        "uploaded_at": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        "owner_id": current_user["id"],
     })
     save_history(history)
 
@@ -91,10 +108,19 @@ async def upload_document(file: UploadFile = File(...)):
 
 # ── 2. QUERY (Q&A) ───────────────────────────────────────────
 @router.post("/query", response_model=QueryResponse)
-async def query_document(request: QueryRequest):
-    """Ask a question about uploaded documents. Remembers prior turns via request.history."""
+async def query_document(request: QueryRequest, current_user: dict = Depends(get_current_user)):
+    """Ask a question about YOUR uploaded documents. Remembers prior turns via request.history."""
 
-    chunks = search_documents(request.question, request.file_id)
+    owned_ids = [d["file_id"] for d in load_history() if d.get("owner_id") == current_user["id"]]
+
+    if request.file_id:
+        if request.file_id not in owned_ids:
+            raise HTTPException(403, "You don't have access to this document")
+        chunks = search_documents(request.question, file_id=request.file_id)
+    else:
+        # No specific file chosen — search only across documents this user owns,
+        # never other users' documents.
+        chunks = search_documents(request.question, allowed_ids=owned_ids)
 
     if not chunks:
         return QueryResponse(
@@ -112,10 +138,10 @@ async def query_document(request: QueryRequest):
 
 # ── 3. SUMMARIZE ─────────────────────────────────────────────
 @router.post("/summarize", response_model=SummarizeResponse)
-async def summarize_report(request: SummarizeRequest):
+async def summarize_report(request: SummarizeRequest, current_user: dict = Depends(get_current_user)):
     """Summarize a medical report, translated into request.language if not English"""
 
-    file_path = resolve_file_path(request.file_id)
+    file_path = resolve_file_path(request.file_id, current_user)
 
     from app.utils.document_parser import parse_document
     text = parse_document(file_path)
@@ -125,10 +151,10 @@ async def summarize_report(request: SummarizeRequest):
 
 # ── 4. PRESCRIPTION ──────────────────────────────────────────
 @router.post("/extract-prescription", response_model=PrescriptionResponse)
-async def extract_prescription_route(request: SummarizeRequest):
+async def extract_prescription_route(request: SummarizeRequest, current_user: dict = Depends(get_current_user)):
     """Extract medicines and dosages from a prescription"""
 
-    file_path = resolve_file_path(request.file_id)
+    file_path = resolve_file_path(request.file_id, current_user)
 
     from app.utils.document_parser import parse_document
     text = parse_document(file_path)
@@ -139,7 +165,7 @@ async def extract_prescription_route(request: SummarizeRequest):
 # ── 5. TRANSLATE ─────────────────────────────────────────────
 @router.post("/translate", response_model=TranslateResponse)
 async def translate_text(request: TranslateRequest):
-    """Translate text to any supported language (see llm_service.LANGUAGE_CODES)"""
+    """Translate text to any supported language (see llm_service.LANGUAGE_CODES). Public — no file access involved."""
 
     from app.services.llm_service import LANGUAGE_CODES
 
@@ -196,7 +222,7 @@ class DrugCheckRequest(BaseModel):
     medicines: list[str]
 
 @router.post("/drug-interaction")
-async def drug_interaction(request: DrugCheckRequest):
+async def drug_interaction(request: DrugCheckRequest, current_user: dict = Depends(get_current_user)):
     """Check dangerous interactions between medicines"""
     from app.services.llm_service import check_drug_interaction
     result = check_drug_interaction(request.medicines)
@@ -207,10 +233,10 @@ async def drug_interaction(request: DrugCheckRequest):
 
 # ── 8. HEALTH RISK SCORE ─────────────────────────────────────
 @router.post("/health-risk")
-async def health_risk(request: SummarizeRequest):
+async def health_risk(request: SummarizeRequest, current_user: dict = Depends(get_current_user)):
     """Calculate patient health risk score"""
 
-    file_path = resolve_file_path(request.file_id)
+    file_path = resolve_file_path(request.file_id, current_user)
 
     from app.utils.document_parser import parse_document
     from app.services.llm_service import calculate_health_risk
@@ -220,14 +246,21 @@ async def health_risk(request: SummarizeRequest):
 
 # ── 9. GET ALL DOCUMENTS ─────────────────────────────────────
 @router.get("/documents")
-async def get_documents():
-    """Get all uploaded document history"""
-    return {"documents": load_history()}
+async def get_documents(current_user: dict = Depends(get_current_user)):
+    """Get YOUR uploaded document history — never shows other users' documents"""
+    my_docs = [d for d in load_history() if d.get("owner_id") == current_user["id"]]
+    return {"documents": my_docs}
 
 # ── 10. DELETE DOCUMENT ──────────────────────────────────────
 @router.delete("/documents/{file_id}")
-async def delete_document(file_id: str):
-    """Delete a document and its index"""
+async def delete_document(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a document and its index — only if you own it"""
+
+    entry = get_history_entry(file_id)
+    if not entry:
+        raise HTTPException(404, f"Document {file_id} not found")
+    if entry.get("owner_id") != current_user["id"]:
+        raise HTTPException(403, "You don't have access to this document")
 
     history = load_history()
     history = [d for d in history if d["file_id"] != file_id]
@@ -249,10 +282,10 @@ async def delete_document(file_id: str):
 
 # ── 11. DOCTOR REPORT GENERATOR ──────────────────────────────
 @router.post("/generate-doctor-note", response_model=DoctorNoteResponse)
-async def generate_doctor_note_route(request: DoctorNoteRequest):
+async def generate_doctor_note_route(request: DoctorNoteRequest, current_user: dict = Depends(get_current_user)):
     """Turns an uploaded document's raw content into a professional doctor's note"""
 
-    file_path = resolve_file_path(request.file_id)
+    file_path = resolve_file_path(request.file_id, current_user)
 
     from app.utils.document_parser import parse_document
     text = parse_document(file_path)
