@@ -1,3 +1,25 @@
+LANGUAGE_CODES = {
+    "english": "en",
+    "hindi": "hi",
+    "tamil": "ta",
+    "telugu": "te",
+    "kannada": "kn",
+    "malayalam": "ml",
+    "marathi": "mr",
+    "bengali": "bn",
+    "gujarati": "gu",
+    "punjabi": "pa",
+    "urdu": "ur",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "portuguese": "pt",
+    "russian": "ru",
+    "arabic": "ar",
+    "chinese": "zh-CN",
+    "japanese": "ja",
+    "korean": "ko",
+}
 def get_llm():
     """
     Picks the LLM backend based on app.core.config.settings:
@@ -40,14 +62,54 @@ def _invoke(llm, prompt: str) -> str:
     return response if isinstance(response, str) else response.content
 
 
-def ask_question(context_chunks: list[str], question: str) -> str:
+def _translate_if_needed(text: str, language: str) -> str:
+    """
+    Translates text to the requested language if it isn't English.
+    Used so /query and /summarize actually honor the `language` field
+    instead of silently ignoring it.
+    """
+    lang = (language or "english").lower()
+    if lang == "english" or not text:
+        return text
+
+    target = LANGUAGE_CODES.get(lang)
+    if not target:
+        return text  # unknown language code, just return the original
+
+    try:
+        from deep_translator import GoogleTranslator
+        # GoogleTranslator has a ~5000 char limit per call; chunk long text.
+        if len(text) <= 4500:
+            return GoogleTranslator(source="auto", target=target).translate(text)
+
+        chunks = [text[i:i + 4500] for i in range(0, len(text), 4500)]
+        translated = [GoogleTranslator(source="auto", target=target).translate(c) for c in chunks]
+        return " ".join(translated)
+    except Exception as e:
+        print(f"⚠️ Translation failed ({e}), returning original text")
+        return text
+
+
+def _format_history(history: list) -> str:
+    """Turns a list of {role, text} chat turns into readable prompt context."""
+    if not history:
+        return ""
+    lines = []
+    for turn in history[-6:]:  # keep only the last few turns so prompts don't blow up
+        role = "User" if turn.get("role") == "user" else "Assistant"
+        lines.append(f"{role}: {turn.get('text', '')}")
+    return "\n".join(lines)
+
+
+def ask_question(context_chunks: list[str], question: str, history: list = None, language: str = "english") -> str:
     llm = get_llm()
     context = "\n\n".join(context_chunks)
+    history_text = _format_history(history or [])
 
     prompt = f"""You are a helpful medical document assistant.
 Use ONLY the context below to answer the question.
 If the answer is not in the context, say "I couldn't find that in the document."
-
+{f"Here is the conversation so far, for context on follow-up questions:\\n{history_text}\\n" if history_text else ""}
 Context:
 {context}
 
@@ -55,10 +117,11 @@ Question: {question}
 
 Answer:"""
 
-    return _invoke(llm, prompt)
+    answer = _invoke(llm, prompt)
+    return _translate_if_needed(answer, language)
 
 
-def summarize_medical_report(text: str) -> dict:
+def summarize_medical_report(text: str, language: str = "english") -> dict:
     llm = get_llm()
 
     prompt = f"""You are a medical document analyzer.
@@ -81,15 +144,23 @@ Medical Report:
     import json, re
     try:
         json_str = re.search(r'\{.*\}', content, re.DOTALL).group()
-        return json.loads(json_str)
+        result = json.loads(json_str)
     except:
-        return {
+        result = {
             "patient_name": "Could not extract",
             "diagnosis": "Could not extract",
             "abnormal_values": [],
             "recommendations": [],
             "full_summary": content[:500]
         }
+
+    if (language or "english").lower() != "english":
+        result["diagnosis"] = _translate_if_needed(result.get("diagnosis", ""), language)
+        result["full_summary"] = _translate_if_needed(result.get("full_summary", ""), language)
+        result["abnormal_values"] = [_translate_if_needed(v, language) for v in result.get("abnormal_values", [])]
+        result["recommendations"] = [_translate_if_needed(r, language) for r in result.get("recommendations", [])]
+
+    return result
 
 
 def extract_prescription(text: str) -> dict:
@@ -172,3 +243,35 @@ Medical Report:
             "urgency": "Please consult a doctor",
             "lifestyle_tips": []
         }
+
+
+def generate_doctor_note(text: str, patient_name: str = None, language: str = "english") -> str:
+    """
+    Turns raw uploaded document text (lab results, symptoms notes, prior reports)
+    into a professional-sounding doctor's note / clinical summary.
+    """
+    llm = get_llm()
+
+    name_line = f"The patient's name is {patient_name}." if patient_name else ""
+
+    prompt = f"""You are an experienced physician writing a formal clinical note based on the
+patient information and/or report below. {name_line}
+
+Write a professional doctor's note with these sections, using clear clinical language:
+- Chief Complaint
+- History / Findings (summarize what's in the source material)
+- Assessment
+- Plan / Recommendations
+- Follow-up
+
+Keep it factual and grounded only in what's in the source text below — do not invent
+lab values, medications, or history that isn't present. If a section has nothing
+relevant in the source, write "Not documented" for that section.
+
+Source material:
+{text[:3500]}
+
+Doctor's Note:"""
+
+    note = _invoke(llm, prompt)
+    return _translate_if_needed(note, language)

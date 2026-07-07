@@ -11,10 +11,15 @@ class UploadResponse(BaseModel):
     chunks_created: int
 
 # ── Query / Q&A ─────────────────────────────────
+class ChatTurn(BaseModel):
+    role: str   # "user" or "ai"
+    text: str
+
 class QueryRequest(BaseModel):
     question: str
     file_id: Optional[str] = None   # None = search all docs
     language: str = "english"
+    history: List[ChatTurn] = []    # previous turns in this conversation, so the AI has memory
 
 class QueryResponse(BaseModel):
     answer: str
@@ -48,3 +53,14 @@ class TranslateResponse(BaseModel):
     translated_text: str
     source_language: str
     target_language: str
+
+# ── Doctor Report Generator ─────────────────────
+class DoctorNoteRequest(BaseModel):
+    file_id: str
+    patient_name: Optional[str] = None
+    language: str = "english"
+
+class DoctorNoteResponse(BaseModel):
+    doctor_note: str
+    patient_name: str = "Not specified"
+    generated_at: str
