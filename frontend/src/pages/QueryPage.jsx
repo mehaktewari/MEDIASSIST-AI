@@ -2,8 +2,11 @@ import { useState, useRef, useEffect } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
+import useLanguages from '../hooks/useLanguages'
 
 const API = 'http://localhost:8000/api'
+
+const LANGUAGES = useLanguages()
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -32,6 +35,7 @@ export default function QueryPage() {
   const [fileId, setFileId] = useState(localStorage.getItem('last_file_id') || '')
   const [messages, setMessages] = useState(() => loadHistory(fileId))
   const [input, setInput] = useState('')
+  const [language, setLanguage] = useState(localStorage.getItem('preferred_language') || 'english')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -78,11 +82,23 @@ export default function QueryPage() {
   const send = async () => {
     if (!input.trim()) return
     const q = input
-    setMessages(p => [...p, { role: 'user', text: q, time: now() }])
+    const updatedMessages = [...messages, { role: 'user', text: q, time: now() }]
+    setMessages(updatedMessages)
     setInput('')
     setLoading(true)
     try {
-      const res = await axios.post(`${API}/query`, { question: q, file_id: fileId || null })
+      // Send the last few turns so the AI has memory of the conversation,
+      // not just the current question in isolation.
+      const historyForApi = updatedMessages
+        .slice(-9, -1) // last 4 exchanges, excluding the question we're asking right now
+        .map(m => ({ role: m.role, text: m.text }))
+
+      const res = await axios.post(`${API}/query`, {
+        question: q,
+        file_id: fileId || null,
+        language,
+        history: historyForApi,
+      })
       setMessages(p => [...p, { role: 'ai', text: res.data.answer, time: now() }])
     } catch {
       setMessages(p => [...p, { role: 'ai', text: 'Something went wrong. Please try again.', time: now(), err: true }])
@@ -156,10 +172,10 @@ export default function QueryPage() {
     <div className="max-w-2xl mx-auto flex flex-col animate-fadeUp" style={{ height: 'calc(100vh - 140px)' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <div>
           <h1 className="text-2xl font-black text-gray-900 dark:text-white">Ask AI</h1>
-          <p className="text-sm text-gray-400">Your conversation is saved automatically on this device</p>
+          <p className="text-sm text-gray-400">Remembers this conversation and saves it on this device</p>
         </div>
         <div className="flex gap-2">
           <div className="relative" ref={exportMenuRef}>
@@ -186,12 +202,17 @@ export default function QueryPage() {
         </div>
       </div>
 
-      {/* File ID */}
-      <div className="mb-3">
+      {/* File ID + Language */}
+      <div className="mb-3 flex gap-2">
         <input type="text" value={fileId}
           onChange={e => { setFileId(e.target.value); localStorage.setItem('last_file_id', e.target.value) }}
           placeholder="File ID (leave empty to search all documents)"
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-gray-400" />
+          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50 placeholder-gray-400" />
+        <select value={language}
+          onChange={e => { setLanguage(e.target.value); localStorage.setItem('preferred_language', e.target.value) }}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-sm text-gray-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/50">
+          {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </select>
       </div>
 
       {/* Messages */}
