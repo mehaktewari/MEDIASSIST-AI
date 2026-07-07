@@ -7,7 +7,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from app.models.schemas import *
 from app.services.rag_service import index_document, search_documents
-from app.services.llm_service import ask_question, summarize_medical_report, extract_prescription
+from app.services.llm_service import ask_question, summarize_medical_report, extract_prescription, generate_doctor_note
 from app.core.config import settings
 
 router = APIRouter()
@@ -32,6 +32,14 @@ def save_history(history):
     with open(HISTORY_FILE, "w") as f:
         json.dump(history, f)
 
+def resolve_file_path(file_id: str) -> str:
+    """Finds the uploaded file on disk for a given file_id, or raises 404."""
+    for ext in [".pdf", ".docx", ".txt"]:
+        file_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{ext}")
+        if os.path.exists(file_path):
+            return file_path
+    raise HTTPException(404, f"File {file_id} not found")
+
 # ── 1. UPLOAD ────────────────────────────────────────────────
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...)):
@@ -46,8 +54,18 @@ async def upload_document(file: UploadFile = File(...)):
     file_path = os.path.join(settings.UPLOAD_DIR, filename)
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+    max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
+    content = await file.read()
+
+    if len(content) > max_bytes:
+        raise HTTPException(
+            413,
+            f"File too large ({len(content) / (1024 * 1024):.1f}MB). "
+            f"Max allowed size is {settings.MAX_FILE_SIZE_MB}MB."
+        )
+
     async with aiofiles.open(file_path, "wb") as f:
-        content = await file.read()
         await f.write(content)
 
     chunks = index_document(file_path, file_id)
@@ -74,7 +92,7 @@ async def upload_document(file: UploadFile = File(...)):
 # ── 2. QUERY (Q&A) ───────────────────────────────────────────
 @router.post("/query", response_model=QueryResponse)
 async def query_document(request: QueryRequest):
-    """Ask a question about uploaded documents"""
+    """Ask a question about uploaded documents. Remembers prior turns via request.history."""
 
     chunks = search_documents(request.question, request.file_id)
 
@@ -83,7 +101,8 @@ async def query_document(request: QueryRequest):
             answer="No relevant documents found. Please upload a document first."
         )
 
-    answer = ask_question(chunks, request.question)
+    history_dicts = [turn.dict() for turn in request.history]
+    answer = ask_question(chunks, request.question, history=history_dicts, language=request.language)
 
     return QueryResponse(
         answer=answer,
@@ -94,18 +113,13 @@ async def query_document(request: QueryRequest):
 # ── 3. SUMMARIZE ─────────────────────────────────────────────
 @router.post("/summarize", response_model=SummarizeResponse)
 async def summarize_report(request: SummarizeRequest):
-    """Summarize a medical report"""
+    """Summarize a medical report, translated into request.language if not English"""
 
-    for ext in [".pdf", ".docx", ".txt"]:
-        file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
-        if os.path.exists(file_path):
-            break
-    else:
-        raise HTTPException(404, f"File {request.file_id} not found")
+    file_path = resolve_file_path(request.file_id)
 
     from app.utils.document_parser import parse_document
     text = parse_document(file_path)
-    result = summarize_medical_report(text)
+    result = summarize_medical_report(text, language=request.language)
 
     return SummarizeResponse(**result)
 
@@ -114,12 +128,7 @@ async def summarize_report(request: SummarizeRequest):
 async def extract_prescription_route(request: SummarizeRequest):
     """Extract medicines and dosages from a prescription"""
 
-    for ext in [".pdf", ".docx", ".txt"]:
-        file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
-        if os.path.exists(file_path):
-            break
-    else:
-        raise HTTPException(404, f"File {request.file_id} not found")
+    file_path = resolve_file_path(request.file_id)
 
     from app.utils.document_parser import parse_document
     text = parse_document(file_path)
@@ -130,15 +139,17 @@ async def extract_prescription_route(request: SummarizeRequest):
 # ── 5. TRANSLATE ─────────────────────────────────────────────
 @router.post("/translate", response_model=TranslateResponse)
 async def translate_text(request: TranslateRequest):
-    """Translate text to Hindi, Tamil, or English"""
+    """Translate text to any supported language (see llm_service.LANGUAGE_CODES)"""
 
-    lang_map = {
-        "hindi": "hi",
-        "tamil": "ta",
-        "english": "en"
-    }
+    from app.services.llm_service import LANGUAGE_CODES
 
-    target = lang_map.get(request.target_language.lower(), "hi")
+    target = LANGUAGE_CODES.get(request.target_language.lower())
+    if not target:
+        raise HTTPException(
+            400,
+            f"Unsupported language '{request.target_language}'. "
+            f"Supported: {', '.join(LANGUAGE_CODES.keys())}"
+        )
 
     from deep_translator import GoogleTranslator
     translated = GoogleTranslator(
@@ -157,6 +168,27 @@ async def health_check():
     return {
         "status": "✅ MediAssist AI is running!",
         "version": "1.0.0"
+    }
+
+# ── 6b. SUPPORTED LANGUAGES ───────────────────────────────────
+@router.get("/languages")
+async def get_languages():
+    """List of languages supported for translation/summarization/chat responses"""
+    from app.services.llm_service import LANGUAGE_CODES
+    labels = {
+        "english": "English", "hindi": "हिन्दी Hindi", "tamil": "தமிழ் Tamil",
+        "telugu": "తెలుగు Telugu", "kannada": "ಕನ್ನಡ Kannada", "malayalam": "മലയാളം Malayalam",
+        "marathi": "मराठी Marathi", "bengali": "বাংলা Bengali", "gujarati": "ગુજરાતી Gujarati",
+        "punjabi": "ਪੰਜਾਬੀ Punjabi", "urdu": "اردو Urdu", "spanish": "Español Spanish",
+        "french": "Français French", "german": "Deutsch German", "portuguese": "Português Portuguese",
+        "russian": "Русский Russian", "arabic": "العربية Arabic", "chinese": "中文 Chinese",
+        "japanese": "日本語 Japanese", "korean": "한국어 Korean",
+    }
+    return {
+        "languages": [
+            {"value": code, "label": labels.get(code, code.title())}
+            for code in LANGUAGE_CODES.keys()
+        ]
     }
 
 # ── 7. DRUG INTERACTION CHECKER ──────────────────────────────
@@ -178,12 +210,7 @@ async def drug_interaction(request: DrugCheckRequest):
 async def health_risk(request: SummarizeRequest):
     """Calculate patient health risk score"""
 
-    for ext in [".pdf", ".docx", ".txt"]:
-        file_path = os.path.join(settings.UPLOAD_DIR, f"{request.file_id}{ext}")
-        if os.path.exists(file_path):
-            break
-    else:
-        raise HTTPException(404, f"File {request.file_id} not found")
+    file_path = resolve_file_path(request.file_id)
 
     from app.utils.document_parser import parse_document
     from app.services.llm_service import calculate_health_risk
@@ -219,3 +246,20 @@ async def delete_document(file_id: str):
             os.remove(path)
 
     return {"message": f"Document {file_id} deleted successfully!"}
+
+# ── 11. DOCTOR REPORT GENERATOR ──────────────────────────────
+@router.post("/generate-doctor-note", response_model=DoctorNoteResponse)
+async def generate_doctor_note_route(request: DoctorNoteRequest):
+    """Turns an uploaded document's raw content into a professional doctor's note"""
+
+    file_path = resolve_file_path(request.file_id)
+
+    from app.utils.document_parser import parse_document
+    text = parse_document(file_path)
+    note = generate_doctor_note(text, patient_name=request.patient_name, language=request.language)
+
+    return DoctorNoteResponse(
+        doctor_note=note,
+        patient_name=request.patient_name or "Not specified",
+        generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p")
+    )
