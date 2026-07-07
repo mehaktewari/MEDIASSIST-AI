@@ -10,16 +10,64 @@ from app.core.config import settings
 VECTOR_DB_PATH = "vector_db"
 os.makedirs(VECTOR_DB_PATH, exist_ok=True)
 
+
+def _use_gemini_embeddings() -> bool:
+    """
+    Decide whether to embed via the Gemini API (lightweight HTTP calls, no
+    model loaded into memory) or via a local HuggingFace model (heavier —
+    loads PyTorch + the model into RAM).
+
+    On memory-constrained hosts (like Render's free tier, 512MB RAM), loading
+    the local embedding model alongside the rest of the app can exceed
+    available memory and get the process killed. Since we already require a
+    Gemini key when LLM_PROVIDER=gemini, reusing that same key for embeddings
+    avoids the local model entirely in that case.
+    """
+    return settings.LLM_PROVIDER.lower() == "gemini" and bool(settings.GEMINI_API_KEY)
+
+
+def _gemini_embed(texts: list[str], task_type: str) -> np.ndarray:
+    import google.generativeai as genai
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+
+    vectors = []
+    for text in texts:
+        result = genai.embed_content(
+            model="models/embedding-001",
+            content=text,
+            task_type=task_type,  # "retrieval_document" for indexing, "retrieval_query" for searching
+        )
+        vectors.append(result["embedding"])
+
+    return np.array(vectors).astype("float32")
+
+
+def _local_embed(texts: list[str], is_query: bool) -> np.ndarray:
+    from langchain_huggingface import HuggingFaceEmbeddings
+    model = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"  # FREE & fast, but needs local RAM
+    )
+    if is_query:
+        return np.array(model.embed_query(texts[0])).astype("float32").reshape(1, -1)
+    return np.array(model.embed_documents(texts)).astype("float32")
+
+
 def get_embeddings(texts: list[str]) -> np.ndarray:
     """
     Convert text into numbers (vectors) that AI understands.
     👶 Like giving each sentence a unique fingerprint!
     """
-    from langchain_huggingface import HuggingFaceEmbeddings
-    model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"  # FREE & fast!
-    )
-    return np.array(model.embed_documents(texts)).astype("float32")
+    if _use_gemini_embeddings():
+        return _gemini_embed(texts, task_type="retrieval_document")
+    return _local_embed(texts, is_query=False)
+
+
+def get_query_embedding(question: str) -> np.ndarray:
+    """Same idea as get_embeddings, but for a single search question."""
+    if _use_gemini_embeddings():
+        return _gemini_embed([question], task_type="retrieval_query")
+    return _local_embed([question], is_query=True)
+
 
 def index_document(file_path: str, file_id: str) -> int:
     """
@@ -50,6 +98,7 @@ def index_document(file_path: str, file_id: str) -> int:
 
     return len(chunks)
 
+
 def search_documents(question: str, file_id: str = None, top_k: int = 4, allowed_ids: list[str] = None) -> list[str]:
     """
     Find the most relevant chunks for a question.
@@ -59,12 +108,7 @@ def search_documents(question: str, file_id: str = None, top_k: int = 4, allowed
     used so one user can never accidentally search another user's documents
     when file_id is left blank ("search all my documents").
     """
-    # Embed the question
-    from langchain_huggingface import HuggingFaceEmbeddings
-    model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-    q_vector = np.array(model.embed_query(question)).astype("float32").reshape(1, -1)
+    q_vector = get_query_embedding(question)
 
     # Find which indexes to search
     if file_id:
