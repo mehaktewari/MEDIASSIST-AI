@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: mediassist-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist uploaded files, FAISS indexes, and the SQLite user DB
+      # across container restarts/rebuilds — without this, everything
+      # would be wiped every time you run `docker compose up --build`.
+      - ./backend/data:/app/data
+      - ./backend/vector_db:/app/vector_db
+    env_file:
+      - .env
+    environment:
+      - DEBUG=false
+      - FRONTEND_URL=http://localhost:5173
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mediassist-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
